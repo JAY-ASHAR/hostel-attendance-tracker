@@ -47,7 +47,7 @@ def login():
             st.session_state.user = {"username": u, **user}
             st.rerun()
         else:
-            st.error("Invalid login")
+            st.error("Invalid credentials")
 
 def logout():
     if st.sidebar.button("Logout"):
@@ -59,10 +59,12 @@ def admin_only():
         st.error("Admin only")
         st.stop()
 
-# ---------------- DATA ----------------
+# ---------------- DATA HELPERS ----------------
 def load_students(active_only=True):
     df = pd.DataFrame(get_sheet("Students").get_all_records())
-    df.columns = [c.strip().lower() for c in df.columns]
+    if df.empty:
+        return df
+    df.columns = [c.lower() for c in df.columns]
     if active_only:
         df = df[df["active"] == True]
     return df
@@ -73,29 +75,29 @@ def load_attendance():
     if df.empty:
         return df
     df["date"] = pd.to_datetime(df["date"])
-    df["month"] = df["date"].dt.to_period("M").astype(str)
     return df
+
+def get_next_student_id():
+    df = load_students(active_only=False)
+    if df.empty:
+        return 1
+    return int(df["student_id"].max()) + 1
 
 @st.cache_data(ttl=30)
 def is_locked(day, session):
-    try:
-        rows = get_sheet("Locks").get_all_records()
-        for r in rows:
-            if str(r.get("date")) == day and r.get("session") == session:
-                return bool(r.get("locked"))
-        return False
-    except:
-        return False
+    rows = get_sheet("Locks").get_all_records()
+    for r in rows:
+        if str(r["date"]) == day and r["session"] == session:
+            return bool(r["locked"])
+    return False
 
 def set_lock(day, session, locked=True):
     ws = get_sheet("Locks")
     rows = ws.get_all_records()
-
-    for idx, r in enumerate(rows, start=2):
-        if str(r.get("date")) == day and r.get("session") == session:
-            ws.update(f"C{idx}", locked)
+    for i, r in enumerate(rows, start=2):
+        if str(r["date"]) == day and r["session"] == session:
+            ws.update(f"C{i}", locked)
             return
-
     ws.append_row([day, session, locked])
 
 # ---------------- ATTENDANCE ----------------
@@ -104,10 +106,10 @@ def take_attendance():
     st.header("📝 Take Attendance")
 
     day = st.date_input("Date", date.today()).strftime("%Y-%m-%d")
-    session = user["session"] if user["role"] == "operator" else st.selectbox("Session", SESSIONS)
+    session = user.get("session") if user["role"] == "operator" else st.selectbox("Session", SESSIONS)
 
     if is_locked(day, session) and user["role"] != "admin":
-        st.warning("🔒 This session is locked")
+        st.warning("🔒 Session locked")
         return
 
     students = load_students()
@@ -121,63 +123,109 @@ def take_attendance():
             for _, r in students.iterrows()
         }
 
-    st.info("👉 Click a student name under the correct status")
-
-    def mark_status(sid, status):
-        st.session_state.attendance_state[sid]["status"] = status
+    st.info("Click student name under correct status")
 
     cols = st.columns(3)
 
-    for idx, status in enumerate(STATUS_OPTIONS):
-        with cols[idx % 3]:
+    for i, status in enumerate(STATUS_OPTIONS):
+        with cols[i % 3]:
             st.subheader(status)
-            shown = False
             for sid, info in st.session_state.attendance_state.items():
                 if info["status"] in (None, status):
-                    shown = True
                     if st.button(info["name"], key=f"{day}_{session}_{status}_{sid}"):
-                        mark_status(sid, status)
-            if not shown:
-                st.caption("—")
+                        st.session_state.attendance_state[sid]["status"] = status
 
     data, missing = [], []
-
     for sid, info in st.session_state.attendance_state.items():
-        if info["status"] is None:
+        if not info["status"]:
             missing.append(info["name"])
         else:
             data.append([day, session, sid, info["name"], info["status"]])
 
     if missing:
-        st.warning("Attendance not completed for:")
+        st.warning("Attendance pending for:")
         for m in missing:
             st.write("•", m)
         return
 
     df = pd.DataFrame(data, columns=["date","session","student_id","name","status"])
-    st.subheader("📊 Live Totals")
+    st.subheader("Live Totals")
     st.write(df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0))
 
-    if st.button(f"Submit & Lock {session} Attendance"):
+    if st.button("Submit & Lock"):
         get_sheet("Attendance").append_rows(data)
         set_lock(day, session, True)
-        st.session_state.pop("attendance_state", None)
+        st.session_state.pop("attendance_state")
         st.cache_data.clear()
-        st.success("✅ Attendance saved & locked")
+        st.success("Attendance saved")
         st.rerun()
 
-# ---------------- STUDENTS ----------------
+# ---------------- MANAGE STUDENTS ----------------
 def manage_students():
     admin_only()
     st.header("👥 Manage Students")
+
+    ws = get_sheet("Students")
     df = load_students(active_only=False)
-    edited = st.data_editor(df, num_rows="dynamic")
-    if st.button("Save"):
-        ws = get_sheet("Students")
+    if df.empty:
+        df = pd.DataFrame(columns=["student_id","name","active","inactive_reason"])
+
+    search = st.text_input("🔍 Search").lower()
+    if search:
+        df = df[df["name"].str.lower().str.contains(search)]
+
+    with st.form("add_student"):
+        name = st.text_input("Student Name")
+        if st.form_submit_button("Add Student"):
+            if not name.strip():
+                st.error("Name required")
+            elif name.lower() in df["name"].str.lower().tolist():
+                st.error("Duplicate name")
+            else:
+                ws.append_row([get_next_student_id(), name.strip(), True, ""])
+                st.success("Student added")
+                st.rerun()
+
+    edited = st.data_editor(
+        df,
+        column_config={
+            "student_id": st.column_config.NumberColumn(disabled=True),
+            "active": st.column_config.CheckboxColumn(),
+        },
+        num_rows="dynamic"
+    )
+
+    if st.button("Save Changes"):
+        if edited["name"].str.lower().duplicated().any():
+            st.error("Duplicate names found")
+            return
         ws.clear()
         ws.update([edited.columns.tolist()] + edited.values.tolist())
         st.success("Saved")
         st.rerun()
+
+# ---------------- STUDENT PROFILE ----------------
+def student_profiles():
+    admin_only()
+    st.header("📊 Student Profile")
+
+    students = load_students(active_only=False)
+    sid = st.selectbox(
+        "Student",
+        students["student_id"],
+        format_func=lambda x: students.loc[students["student_id"] == x, "name"].values[0]
+    )
+
+    df = load_attendance()
+    sdf = df[df["student_id"] == sid]
+
+    if sdf.empty:
+        st.info("No records")
+        return
+
+    st.dataframe(sdf[["date","session","status"]])
+    st.subheader("Summary")
+    st.write(sdf["status"].value_counts())
 
 # ---------------- REPORTS ----------------
 def generate_reports():
@@ -189,29 +237,19 @@ def generate_reports():
         return
 
     day = st.date_input("Date").strftime("%Y-%m-%d")
-    session = st.selectbox("Session", ["Morning", "Night", "Combined"])
+    session = st.selectbox("Session", ["Morning","Night","Combined"])
 
     if session != "Combined":
-        df = df[(df["date"].astype(str) == day) & (df["session"] == session)]
+        df = df[(df["date"].astype(str)==day) & (df["session"]==session)]
     else:
-        df = df[df["date"].astype(str) == day]
+        df = df[df["date"].astype(str)==day]
 
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        df.to_excel(writer, index=False)
-        df["status"].value_counts().to_excel(writer, sheet_name="Summary")
+    out = BytesIO()
+    with pd.ExcelWriter(out, engine="xlsxwriter") as w:
+        df.to_excel(w, index=False)
+        df["status"].value_counts().to_excel(w, sheet_name="Summary")
 
-    st.download_button("Download Excel", output.getvalue(), "attendance.xlsx")
-
-# ---------------- ANALYTICS ----------------
-def analytics():
-    admin_only()
-    st.header("📊 Analytics")
-    df = load_attendance()
-    if df.empty:
-        st.info("No data")
-        return
-    st.bar_chart(df["status"].value_counts())
+    st.download_button("Download Excel", out.getvalue(), "attendance.xlsx")
 
 # ---------------- MAIN ----------------
 def main():
@@ -226,7 +264,7 @@ def main():
 
     menu = ["Take Attendance"]
     if st.session_state.user["role"] == "admin":
-        menu += ["Manage Students", "Generate Report", "Analytics"]
+        menu += ["Manage Students","Student Profiles","Generate Report"]
 
     choice = st.sidebar.radio("Go to", menu)
 
@@ -234,10 +272,10 @@ def main():
         take_attendance()
     elif choice == "Manage Students":
         manage_students()
+    elif choice == "Student Profiles":
+        student_profiles()
     elif choice == "Generate Report":
         generate_reports()
-    elif choice == "Analytics":
-        analytics()
 
 if __name__ == "__main__":
     main()
