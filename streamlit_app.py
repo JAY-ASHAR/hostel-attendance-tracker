@@ -1,6 +1,6 @@
 # =========================================================
 # Hostel Attendance Tracker (Google Sheets Only)
-# Single-file, Clean & Stable (FINAL)
+# Single-file, Clean & Stable (FINAL – STUDENT WISE UI)
 # =========================================================
 
 import streamlit as st
@@ -107,13 +107,17 @@ def set_lock(day, session, locked=True):
 
     ws.append_row([day, session, locked])
 
-# ---------------- ATTENDANCE ----------------
+# ---------------- ATTENDANCE (STUDENT-WISE) ----------------
 def take_attendance():
     user = st.session_state.user
     st.header("📝 Take Attendance")
 
     day = st.date_input("Date", date.today()).strftime("%Y-%m-%d")
-    session = user.get("session") if user["role"] == "operator" else st.selectbox("Session", SESSIONS)
+    session = (
+        user.get("session")
+        if user["role"] == "operator"
+        else st.selectbox("Session", SESSIONS)
+    )
 
     if is_locked(day, session) and user["role"] != "admin":
         st.warning("🔒 Session locked")
@@ -124,49 +128,38 @@ def take_attendance():
         st.warning("No active students")
         return
 
-    state_key = f"{day}_{session}"
-    if st.session_state.get("attendance_key") != state_key:
-        st.session_state.attendance_key = state_key
-        st.session_state.attendance_state = {
-            r["student_id"]: {"name": r["name"], "status": None}
-            for _, r in students.iterrows()
-        }
+    st.markdown("### Mark attendance (one student at a time)")
 
-    st.info("Click student name under the correct status")
+    attendance = {}
 
-    cols = st.columns(3)
+    # -------- STUDENT WISE ROWS --------
+    for _, r in students.iterrows():
+        sid = r["student_id"]
+        name = r["name"]
 
-    for i, status in enumerate(STATUS_OPTIONS):
-        with cols[i % 3]:
-            st.subheader(status)
-            shown = False
-            for sid, info in st.session_state.attendance_state.items():
-                if info["status"] in (None, status):
-                    shown = True
-                    if st.button(info["name"], key=f"{state_key}_{status}_{sid}"):
-                        st.session_state.attendance_state[sid]["status"] = status
-            if not shown:
-                st.caption("—")
+        attendance[sid] = st.radio(
+            f"{name}",
+            STATUS_OPTIONS,
+            horizontal=True,
+            key=f"{day}_{session}_{sid}",
+        )
 
-    data, missing = [], []
+    # -------- BUILD DATA --------
+    data = [
+        [day, session, sid, students.loc[students["student_id"] == sid, "name"].values[0], status]
+        for sid, status in attendance.items()
+    ]
 
-    for sid, info in st.session_state.attendance_state.items():
-        if not info["status"]:
-            missing.append(info["name"])
-        else:
-            data.append([day, session, sid, info["name"], info["status"]])
+    df = pd.DataFrame(
+        data, columns=["date", "session", "student_id", "name", "status"]
+    )
 
-    if missing:
-        st.warning("Attendance pending for:")
-        for m in missing:
-            st.write("•", m)
-        return
-
-    df = pd.DataFrame(data, columns=["date","session","student_id","name","status"])
+    # -------- LIVE TOTALS --------
     st.subheader("📊 Live Totals")
     st.write(df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0))
 
-    if st.button("Submit & Lock Attendance"):
+    # -------- SUBMIT --------
+    if st.button(f"Submit & Lock {session} Attendance"):
         get_sheet("Attendance").append_rows(data)
         set_lock(day, session, True)
         st.cache_data.clear()
@@ -180,8 +173,9 @@ def manage_students():
 
     ws = get_sheet("Students")
     df = load_students(active_only=False)
+
     if df.empty:
-        df = pd.DataFrame(columns=["student_id","name","active","inactive_reason"])
+        df = pd.DataFrame(columns=["student_id", "name", "active", "inactive_reason"])
 
     search = st.text_input("🔍 Search student").strip().lower()
     if search:
@@ -230,7 +224,9 @@ def student_profiles():
     sid = st.selectbox(
         "Select Student",
         students["student_id"],
-        format_func=lambda x: students.loc[students["student_id"] == x, "name"].values[0],
+        format_func=lambda x: students.loc[
+            students["student_id"] == x, "name"
+        ].values[0],
     )
 
     df = load_attendance()
@@ -240,7 +236,7 @@ def student_profiles():
         st.info("No attendance records")
         return
 
-    st.dataframe(sdf[["date","session","status"]])
+    st.dataframe(sdf[["date", "session", "status"]])
     st.subheader("Summary")
     st.write(sdf["status"].value_counts())
 
@@ -255,7 +251,7 @@ def generate_reports():
         return
 
     day = st.date_input("Date").strftime("%Y-%m-%d")
-    session = st.selectbox("Session", ["Morning","Night","Combined"])
+    session = st.selectbox("Session", ["Morning", "Night", "Combined"])
 
     if session != "Combined":
         df = df[(df["date"].astype(str) == day) & (df["session"] == session)]
@@ -282,7 +278,7 @@ def main():
 
     menu = ["Take Attendance"]
     if st.session_state.user["role"] == "admin":
-        menu += ["Manage Students","Student Profiles","Generate Report"]
+        menu += ["Manage Students", "Student Profiles", "Generate Report"]
 
     choice = st.sidebar.radio("Go to", menu)
 
