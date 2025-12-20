@@ -1,6 +1,6 @@
 # =========================================================
 # Hostel Attendance Tracker (Google Sheets Only)
-# Single-file, Clean & Stable (PHASE 1 ADDED)
+# Single-file, Clean & Stable (FINAL – ROW-BASED UI)
 # =========================================================
 
 import streamlit as st
@@ -84,15 +84,6 @@ def load_attendance():
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     return df
 
-# ---------------- LOCK & DUPLICATE PROTECTION ----------------
-def attendance_exists(day, session):
-    df = load_attendance()
-    if df.empty:
-        return False
-    return not df[
-        (df["date"].astype(str) == day) & (df["session"] == session)
-    ].empty
-
 @st.cache_data(ttl=30)
 def is_locked(day, session):
     rows = get_sheet("Locks").get_all_records()
@@ -112,7 +103,7 @@ def set_lock(day, session, locked=True):
 
     ws.append_row([day, session, locked])
 
-# ---------------- ATTENDANCE ----------------
+# ---------------- ATTENDANCE (ROW-BASED) ----------------
 def take_attendance():
     user = st.session_state.user
     st.header("📝 Take Attendance")
@@ -123,11 +114,6 @@ def take_attendance():
         if user["role"] == "operator"
         else st.selectbox("Session", SESSIONS)
     )
-
-    # 🔒 Duplicate protection
-    if attendance_exists(day, session) and user["role"] != "admin":
-        st.error("❌ Attendance already submitted for this session")
-        return
 
     if is_locked(day, session) and user["role"] != "admin":
         st.warning("🔒 Session locked")
@@ -142,22 +128,27 @@ def take_attendance():
 
     attendance = {}
 
+    # -------- STUDENT ROWS --------
     for _, r in students.iterrows():
+        sid = r["student_id"]
+        name = r["name"]
+
         col1, col2 = st.columns([2, 8])
+
         with col1:
-            st.markdown(f"**{r['name']}**")
+            st.markdown(f"**{name}**")
+
         with col2:
-            attendance[r["student_id"]] = st.radio(
+            attendance[sid] = st.radio(
                 "",
                 STATUS_OPTIONS,
                 horizontal=True,
-                key=f"{day}_{session}_{r['student_id']}",
+                key=f"{day}_{session}_{sid}",
             )
 
+    # -------- SAVE DATA --------
     data = [
-        [day, session, sid,
-         students.loc[students["student_id"] == sid, "name"].values[0],
-         status]
+        [day, session, sid, students.loc[students["student_id"] == sid, "name"].values[0], status]
         for sid, status in attendance.items()
     ]
 
@@ -173,31 +164,31 @@ def take_attendance():
         st.success("✅ Attendance saved & locked")
         st.rerun()
 
-# ---------------- ADMIN UNLOCK SCREEN ----------------
-def admin_unlock():
+# ---------------- MANAGE STUDENTS ----------------
+def manage_students():
     admin_only()
-    st.header("🔓 Admin Unlock / Lock Attendance")
+    st.header("👥 Manage Students")
 
-    day = st.date_input("Date").strftime("%Y-%m-%d")
-    session = st.selectbox("Session", SESSIONS)
+    ws = get_sheet("Students")
+    df = load_students(active_only=False)
 
-    locked = is_locked(day, session)
+    if df.empty:
+        df = pd.DataFrame(columns=["student_id", "name", "active", "inactive_reason"])
 
-    st.info(f"Current status: {'🔒 Locked' if locked else '🔓 Unlocked'}")
+    edited = st.data_editor(
+        df,
+        column_config={
+            "student_id": st.column_config.NumberColumn(disabled=True),
+            "active": st.column_config.CheckboxColumn(),
+        },
+        num_rows="dynamic",
+    )
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔓 Unlock"):
-            set_lock(day, session, False)
-            st.success("Unlocked")
-            st.cache_data.clear()
-            st.rerun()
-    with col2:
-        if st.button("🔒 Lock"):
-            set_lock(day, session, True)
-            st.success("Locked")
-            st.cache_data.clear()
-            st.rerun()
+    if st.button("Save Changes"):
+        ws.clear()
+        ws.update([edited.columns.tolist()] + edited.values.tolist())
+        st.success("Changes saved")
+        st.rerun()
 
 # ---------------- MAIN ----------------
 def main():
@@ -212,14 +203,15 @@ def main():
 
     menu = ["Take Attendance"]
     if st.session_state.user["role"] == "admin":
-        menu += ["Admin Unlock"]
+        menu += ["Manage Students"]
 
     choice = st.sidebar.radio("Go to", menu)
 
     if choice == "Take Attendance":
         take_attendance()
-    elif choice == "Admin Unlock":
-        admin_unlock()
+    elif choice == "Manage Students":
+        manage_students()
 
 if __name__ == "__main__":
     main()
+
