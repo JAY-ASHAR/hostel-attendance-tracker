@@ -97,9 +97,16 @@ def take_attendance():
     session = user["session"] if user["role"] == "operator" else st.selectbox("Session", SESSIONS)
 
     # Lock check
-    if is_locked(day, session) and user["role"] != "admin":
-        st.warning("🔒 This session is locked")
-        return
+   def set_lock(day, session, locked=True):
+    ws = get_sheet("Locks")
+    rows = ws.get_all_records()
+
+    for idx, r in enumerate(rows, start=2):
+        if str(r.get("date")) == day and r.get("session") == session:
+            ws.update(f"C{idx}", locked)
+            return
+
+    ws.append_row([day, session, locked])
 
     # Load students
     students = load_students()
