@@ -92,37 +92,102 @@ def take_attendance():
     user = st.session_state.user
     st.header("📝 Take Attendance")
 
+    # Date & Session
     day = st.date_input("Date", date.today()).strftime("%Y-%m-%d")
     session = user["session"] if user["role"] == "operator" else st.selectbox("Session", SESSIONS)
 
+    # Lock check
     if is_locked(day, session) and user["role"] != "admin":
-        st.warning("Session locked")
+        st.warning("🔒 This session is locked")
         return
 
+    # Load students
     students = load_students()
-    data = []
+    if students.empty:
+        st.warning("No active students found")
+        return
+
+    # Init attendance state
+    if "attendance_state" not in st.session_state:
+        st.session_state.attendance_state = {}
 
     for _, r in students.iterrows():
-        status = st.radio(
-            r["name"],
-            STATUS_OPTIONS,
-            horizontal=True,
-            key=f"{day}_{session}_{r['student_id']}"
+        st.session_state.attendance_state.setdefault(
+            r["student_id"],
+            {"name": r["name"], "status": None}
         )
-        data.append([day, session, r["student_id"], r["name"], status])
 
-    df = pd.DataFrame(data, columns=["date","session","student_id","name","status"])
+    st.markdown("### 👉 Click a student name under the correct status")
 
-    totals = df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0)
-    st.subheader("Live Totals")
-    st.write(totals)
+    # Helper to mark status
+    def mark_status(student_id, status):
+        st.session_state.attendance_state[student_id]["status"] = status
 
-    if st.button("Submit & Lock"):
+    # Render status-wise board
+    cols = st.columns(3)
+
+    for idx, status in enumerate(STATUS_OPTIONS):
+        with cols[idx % 3]:
+            st.subheader(status)
+
+            found = False
+            for sid, info in st.session_state.attendance_state.items():
+                # Show student if unmarked or already in this status
+                if info["status"] in (None, status):
+                    found = True
+                    if st.button(
+                        info["name"],
+                        key=f"{day}_{session}_{status}_{sid}"
+                    ):
+                        mark_status(sid, status)
+
+            if not found:
+                st.caption("—")
+
+    # Build dataframe before submit
+    data = []
+    missing = []
+
+    for sid, info in st.session_state.attendance_state.items():
+        if info["status"] is None:
+            missing.append(info["name"])
+        else:
+            data.append([
+                day,
+                session,
+                sid,
+                info["name"],
+                info["status"]
+            ])
+
+    # Live totals
+    if data:
+        df = pd.DataFrame(
+            data,
+            columns=["date", "session", "student_id", "name", "status"]
+        )
+        totals = df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0)
+        st.markdown("### 📊 Live Totals")
+        st.write(totals)
+
+    # Validation
+    if missing:
+        st.warning("⚠️ Attendance not completed for:")
+        for m in missing:
+            st.write(f"• {m}")
+        return
+
+    # Submit
+    if st.button(f"Submit & Lock {session} Attendance"):
         ws = get_sheet("Attendance")
-        ws.append_rows(df.values.tolist())
+        ws.append_rows(data)
         set_lock(day, session, True)
+
+        # Clear state after submit
+        st.session_state.pop("attendance_state", None)
         st.cache_data.clear()
-        st.success("Saved & locked")
+
+        st.success("✅ Attendance saved & session locked")
         st.rerun()
 
 # ---------------- STUDENTS (ADMIN) ----------------
