@@ -1,29 +1,19 @@
-# streamlit_app.py
-# ---------------------------------
-# Hostel Attendance Tracker
-# (ONLY attendance storage changed: CSV → Google Sheets)
-# ---------------------------------
+# =========================================================
+# Hostel Attendance Tracker (Google Sheets Only)
+# Single-file, Modular, Production-Grade
+# =========================================================
 
-import os
-import json
-from datetime import date
-from typing import Dict, List
-from io import BytesIO
-
-import numpy as np
-import pandas as pd
 import streamlit as st
-import matplotlib.pyplot as plt
+import pandas as pd
+from datetime import date
+from io import BytesIO
 
 import gspread
 from google.oauth2.service_account import Credentials
 
-# ========== CONFIG ==========
+# ---------------- CONFIG ----------------
 APP_TITLE = "🏠 Hostel Attendance Tracker"
-DATA_DIR = "data"
-STUDENTS_CSV = os.path.join(DATA_DIR, "students.csv")
-LOCKS_JSON = os.path.join(DATA_DIR, "locks.json")
-REPORTS_DIR = os.path.join(DATA_DIR, "reports")
+SHEET_ID = "PUT_YOUR_SHEET_ID_HERE"
 
 SESSIONS = ["Morning", "Night"]
 STATUS_OPTIONS = ["P", "A", "L", "S", "SCH/CLG", "OI"]
@@ -31,197 +21,235 @@ STATUS_OPTIONS = ["P", "A", "L", "S", "SCH/CLG", "OI"]
 USERS = {
     "warden1": {"password": "1234", "role": "admin", "name": "Warden 1"},
     "warden2": {"password": "1234", "role": "admin", "name": "Warden 2"},
-    "morning": {"password": "1111", "role": "operator", "name": "Morning Operator"},
-    "night": {"password": "2222", "role": "operator", "name": "Night Operator"},
+    "morning": {"password": "1111", "role": "operator", "session": "Morning"},
+    "night": {"password": "2222", "role": "operator", "session": "Night"},
 }
 
-# ========== GOOGLE SHEETS ==========
-def get_gsheet():
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
+# ---------------- GOOGLE SHEETS ----------------
+@st.cache_resource
+def get_client():
     creds = Credentials.from_service_account_info(
         st.secrets["gcp_service_account"],
-        scopes=scopes,
+        scopes=["https://www.googleapis.com/auth/spreadsheets"]
     )
-    client = gspread.authorize(creds)
-    return client.open_by_key(st.secrets["google_sheet"]["sheet_id"])
+    return gspread.authorize(creds)
 
-# ========== FILE HELPERS ==========
-def ensure_dirs():
-    os.makedirs(DATA_DIR, exist_ok=True)
-    os.makedirs(REPORTS_DIR, exist_ok=True)
+def get_sheet(name):
+    return get_client().open_by_key(SHEET_ID).worksheet(name)
 
-def ensure_students_csv():
-    if not os.path.exists(STUDENTS_CSV):
-        pd.DataFrame([
-            {"student_id": 1, "name": "Student One", "active": True},
-            {"student_id": 2, "name": "Student Two", "active": True},
-        ]).to_csv(STUDENTS_CSV, index=False)
-
-def load_students():
-    ensure_students_csv()
-    df = pd.read_csv(STUDENTS_CSV)
-    if "active" not in df.columns:
-        df["active"] = True
-    return df[df["active"] == True].copy()
-
-def save_students(df):
-    df.to_csv(STUDENTS_CSV, index=False)
-
-# ========== LOCKS ==========
-def locks_read():
-    if not os.path.exists(LOCKS_JSON):
-        with open(LOCKS_JSON, "w") as f:
-            json.dump({}, f)
-    with open(LOCKS_JSON) as f:
-        return json.load(f)
-
-def locks_write(data):
-    with open(LOCKS_JSON, "w") as f:
-        json.dump(data, f, indent=2)
-
-def is_session_locked(day, session):
-    return locks_read().get(day, {}).get(session, False)
-
-def lock_session(day, session):
-    locks = locks_read()
-    locks.setdefault(day, {})[session] = True
-    locks_write(locks)
-
-def unlock_session(day, session):
-    locks = locks_read()
-    if day in locks:
-        locks[day][session] = False
-        locks_write(locks)
-
-# ========== ATTENDANCE (GSHEET) ==========
-def load_or_init_daily(day):
-    sh = get_gsheet()
-    students = load_students()[["student_id", "name"]]
-
-    try:
-        ws = sh.worksheet(day)
-        df = pd.DataFrame(ws.get_all_records())
-    except:
-        df = students.copy()
-        df["Morning"] = ""
-        df["Night"] = ""
-
-    return students.merge(df, on=["student_id", "name"], how="left").fillna("")
-
-def save_daily(day, df):
-    sh = get_gsheet()
-    try:
-        sh.del_worksheet(sh.worksheet(day))
-    except:
-        pass
-    ws = sh.add_worksheet(title=day, rows=200, cols=10)
-    ws.update([df.columns.tolist()] + df.values.tolist())
-
-# ========== ANALYTICS ==========
-@st.cache_data(show_spinner=False)
-def load_all_attendance_long():
-    sh = get_gsheet()
-    rows = []
-
-    for ws in sh.worksheets():
-        if not ws.title.startswith("20"):
-            continue
-        df = pd.DataFrame(ws.get_all_records())
-        if df.empty:
-            continue
-        df["date"] = ws.title
-        part = df.melt(
-            id_vars=["student_id", "name", "date"],
-            value_vars=SESSIONS,
-            var_name="session",
-            value_name="status",
-        )
-        rows.append(part)
-
-    if not rows:
-        return pd.DataFrame(columns=["date","name","student_id","session","status"])
-
-    out = pd.concat(rows, ignore_index=True)
-    out["date_dt"] = pd.to_datetime(out["date"])
-    out["month"] = out["date_dt"].dt.strftime("%Y-%m")
-    return out
-
-# ========== UI ==========
-def login_ui():
+# ---------------- AUTH ----------------
+def login():
     st.title(APP_TITLE)
     u = st.text_input("Username")
     p = st.text_input("Password", type="password")
     if st.button("Login"):
         user = USERS.get(u)
         if user and user["password"] == p:
-            st.session_state["user"] = {**user, "username": u}
+            st.session_state.user = {"username": u, **user}
             st.rerun()
         else:
             st.error("Invalid credentials")
 
-def nav_sidebar():
-    u = st.session_state["user"]
-    st.sidebar.write(f"👤 {u['name']} ({u['role']})")
-    opts = ["Take Attendance", "Generate Report"]
-    if u["role"] == "admin":
-        opts += ["Manage Students", "Analytics Dashboard"]
-    return st.sidebar.radio("Go to", opts)
+def logout():
+    if st.sidebar.button("Logout"):
+        st.session_state.clear()
+        st.rerun()
 
-def take_attendance_page():
+def admin_only():
+    if st.session_state.user["role"] != "admin":
+        st.error("Admin only")
+        st.stop()
+
+# ---------------- DATA LOADERS ----------------
+def load_students(active_only=True):
+    df = pd.DataFrame(get_sheet("Students").get_all_records())
+    if active_only:
+        df = df[df["active"] == True]
+    return df
+
+@st.cache_data(ttl=300)
+def load_attendance():
+    df = pd.DataFrame(get_sheet("Attendance").get_all_records())
+    if df.empty:
+        return df
+    df["date"] = pd.to_datetime(df["date"])
+    df["month"] = df["date"].dt.to_period("M").astype(str)
+    return df
+
+def is_locked(day, session):
+    rows = get_sheet("Locks").get_all_records()
+    for r in rows:
+        if r["date"] == day and r["session"] == session:
+            return r["locked"]
+    return False
+
+def set_lock(day, session, locked=True):
+    ws = get_sheet("Locks")
+    ws.append_row([day, session, locked])
+
+# ---------------- ATTENDANCE ----------------
+def take_attendance():
+    user = st.session_state.user
     st.header("📝 Take Attendance")
-    day = st.date_input("Date", value=date.today()).strftime("%Y-%m-%d")
-    user = st.session_state["user"]
 
-    allowed = SESSIONS if user["role"]=="admin" else (["Morning"] if user["username"]=="morning" else ["Night"])
-    session = st.selectbox("Session", allowed)
+    day = st.date_input("Date", date.today()).strftime("%Y-%m-%d")
+    session = user["session"] if user["role"] == "operator" else st.selectbox("Session", SESSIONS)
 
-    locked = is_session_locked(day, session)
-    df = load_or_init_daily(day)
-
-    if locked and user["role"]!="admin":
-        st.info("Session locked")
-        st.dataframe(df)
+    if is_locked(day, session) and user["role"] != "admin":
+        st.warning("Session locked")
         return
 
-    updates = []
-    for _, r in df.iterrows():
-        st.write(r["name"])
-        updates.append(st.radio("", [""]+STATUS_OPTIONS, horizontal=True))
+    students = load_students()
+    data = []
 
-    df[session] = updates
+    for _, r in students.iterrows():
+        status = st.radio(
+            r["name"],
+            STATUS_OPTIONS,
+            horizontal=True,
+            key=f"{day}_{session}_{r['student_id']}"
+        )
+        data.append([day, session, r["student_id"], r["name"], status])
+
+    df = pd.DataFrame(data, columns=["date","session","student_id","name","status"])
+
+    totals = df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0)
+    st.subheader("Live Totals")
+    st.write(totals)
 
     if st.button("Submit & Lock"):
-        if "" in updates:
-            st.warning("Fill all")
-        else:
-            save_daily(day, df)
-            lock_session(day, session)
-            st.success("Saved & Locked")
-            st.rerun()
+        ws = get_sheet("Attendance")
+        ws.append_rows(df.values.tolist())
+        set_lock(day, session, True)
+        st.cache_data.clear()
+        st.success("Saved & locked")
+        st.rerun()
 
-def generate_report_page():
-    st.header("📊 Reports")
-    st.info("Reports unchanged (same logic as before)")
+# ---------------- STUDENTS (ADMIN) ----------------
+def manage_students():
+    admin_only()
+    st.header("👥 Manage Students")
+    df = load_students(active_only=False)
 
-def main():
-    st.set_page_config(APP_TITLE, "🏠", "wide")
-    ensure_dirs()
-    ensure_students_csv()
+    edited = st.data_editor(df, num_rows="dynamic")
+    if st.button("Save Changes"):
+        ws = get_sheet("Students")
+        ws.clear()
+        ws.update([edited.columns.tolist()] + edited.values.tolist())
+        st.success("Students updated")
+        st.rerun()
 
-    if "user" not in st.session_state:
-        login_ui()
+# ---------------- REPORTS ----------------
+def generate_reports():
+    admin_only()
+    st.header("📈 Generate Excel Report")
+
+    df = load_attendance()
+    if df.empty:
+        st.info("No data")
         return
 
-    choice = nav_sidebar()
+    day = st.date_input("Date").strftime("%Y-%m-%d")
+    session = st.selectbox("Session", ["Morning","Night","Combined"])
+
+    if session != "Combined":
+        df = df[(df["date"].astype(str)==day) & (df["session"]==session)]
+    else:
+        df = df[df["date"].astype(str)==day]
+
+    if df.empty:
+        st.warning("No data")
+        return
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, sheet_name="Attendance", index=False)
+        df["status"].value_counts().to_excel(writer, sheet_name="Summary")
+
+    st.download_button("Download Excel", output.getvalue(), "attendance.xlsx")
+
+# ---------------- ANALYTICS ----------------
+def analytics():
+    admin_only()
+    st.header("📊 Analytics")
+
+    df = load_attendance()
+    if df.empty:
+        st.info("No data")
+        return
+
+    month = st.selectbox("Month", ["All"] + sorted(df["month"].unique()))
+    if month != "All":
+        df = df[df["month"] == month]
+
+    st.bar_chart(df["status"].value_counts())
+
+# ---------------- LEADERBOARD ----------------
+def leaderboard():
+    admin_only()
+    st.header("🏆 Leaderboards")
+
+    df = load_attendance()
+    if df.empty:
+        return
+
+    grp = df.groupby("student_id")
+    total = grp.size()
+    present = grp.apply(lambda x: (x["status"]=="P").sum())
+    pct = (present / total * 100).round(2)
+
+    board = pd.DataFrame({
+        "Attendance %": pct,
+        "Days": total
+    }).query("Days >= 5").sort_values("Attendance %", ascending=False)
+
+    st.dataframe(board)
+
+# ---------------- PROFILES ----------------
+def student_profiles():
+    admin_only()
+    st.header("👤 Student Profiles")
+
+    students = load_students()
+    sid = st.selectbox("Student", students["student_id"])
+    df = load_attendance()
+    st.dataframe(df[df["student_id"]==sid])
+
+# ---------------- MAIN ----------------
+def main():
+    st.set_page_config(APP_TITLE, layout="wide")
+
+    if "user" not in st.session_state:
+        login()
+        return
+
+    st.sidebar.title("Menu")
+    logout()
+
+    menu = ["Take Attendance"]
+    if st.session_state.user["role"] == "admin":
+        menu += [
+            "Manage Students",
+            "Generate Report",
+            "Analytics",
+            "Leaderboards",
+            "Student Profiles"
+        ]
+
+    choice = st.sidebar.radio("Go to", menu)
+
     if choice == "Take Attendance":
-        take_attendance_page()
+        take_attendance()
+    elif choice == "Manage Students":
+        manage_students()
     elif choice == "Generate Report":
-        generate_report_page()
-    elif choice == "Analytics Dashboard":
-        st.dataframe(load_all_attendance_long())
+        generate_reports()
+    elif choice == "Analytics":
+        analytics()
+    elif choice == "Leaderboards":
+        leaderboard()
+    elif choice == "Student Profiles":
+        student_profiles()
 
 if __name__ == "__main__":
     main()
