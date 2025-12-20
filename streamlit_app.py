@@ -13,7 +13,7 @@ from google.oauth2.service_account import Credentials
 
 # ---------------- CONFIG ----------------
 APP_TITLE = "🏠 Hostel Attendance Tracker"
-SHEET_ID = "PUT_YOUR_SHEET_ID_HERE"
+SHEET_ID = "1kvMmd9jXZOLrIVzXlmBloSzN1Zkj3t7KKjmBrTEtieA"
 
 SESSIONS = ["Morning", "Night"]
 STATUS_OPTIONS = ["P", "A", "L", "S", "SCH/CLG", "OI"]
