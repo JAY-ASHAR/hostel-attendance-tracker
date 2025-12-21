@@ -201,11 +201,22 @@ def take_attendance():
     st.write(df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0))
 
     if st.button(f"Submit & Lock {session} Attendance"):
-        get_sheet("Attendance").append_rows(data)
-        set_lock(day, session, True)
-        st.cache_data.clear()
-        st.success("✅ Attendance saved & locked")
-        st.rerun()
+    get_sheet("Attendance").append_rows(data)
+    set_lock(day, session, True)
+    st.cache_data.clear()
+
+    # Auto-generate color-coded report
+    report_df = df.copy()
+    excel_file = generate_color_excel(report_df)
+
+    st.success("✅ Attendance saved, locked & report generated")
+
+    st.download_button(
+        "⬇️ Download Color-Coded Daily Report",
+        excel_file,
+        file_name=f"attendance_{day}_{session}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
     def generate_color_excel(df):
     output = BytesIO()
 
