@@ -9,6 +9,55 @@ from datetime import date
 from io import BytesIO
 import gspread
 from google.oauth2.service_account import Credentials
+# ---------------- MOBILE FRIENDLY UI ----------------
+st.markdown(
+    """
+    <style>
+    /* Overall app width for mobile */
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 2rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
+        max-width: 100%;
+    }
+
+    /* Make radio buttons touch-friendly */
+    div[role="radiogroup"] > label {
+        margin-right: 12px;
+        font-size: 16px;
+    }
+
+    /* Student name spacing */
+    label {
+        font-size: 16px !important;
+        font-weight: 500;
+    }
+
+    /* Bigger buttons for mobile */
+    button[kind="primary"] {
+        width: 100%;
+        font-size: 18px;
+        padding: 0.6rem;
+    }
+
+    /* Sidebar scroll on mobile */
+    section[data-testid="stSidebar"] {
+        overflow-y: auto;
+    }
+
+    /* Reduce horizontal overflow */
+    .stHorizontalBlock {
+        overflow-x: auto;
+    }
+
+    /* Hide Streamlit footer */
+    footer {visibility: hidden;}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 
 # ---------------- CONFIG ----------------
 APP_TITLE = "🏠 Hostel Attendance Tracker"
@@ -106,6 +155,7 @@ def set_lock(day, session, locked=True):
             return
 
     ws.append_row([day, session, locked])
+
 
 # ---------------- ATTENDANCE ----------------
 def take_attendance():
