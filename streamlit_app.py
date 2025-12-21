@@ -206,6 +206,29 @@ def take_attendance():
         st.cache_data.clear()
         st.success("✅ Attendance saved & locked")
         st.rerun()
+    def generate_color_excel(df):
+    output = BytesIO()
+
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(writer, sheet_name="Attendance", index=False)
+
+        workbook = writer.book
+        worksheet = writer.sheets["Attendance"]
+
+        green = workbook.add_format({"bg_color": "#C6EFCE"})
+        red = workbook.add_format({"bg_color": "#FFC7CE"})
+
+        status_col = df.columns.get_loc("status")
+
+        for row in range(1, len(df) + 1):
+            status = df.iloc[row - 1]["status"]
+            if status == "A":
+                worksheet.write(row, status_col, status, red)
+            else:
+                worksheet.write(row, status_col, status, green)
+
+    output.seek(0)
+    return output
 
 # ---------------- ANALYTICS (NEW) ----------------
 def analytics():
