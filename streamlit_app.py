@@ -167,7 +167,7 @@ def analytics():
         st.info("No attendance data available")
         return
 
-    # Filters
+    # ---------------- FILTERS ----------------
     col1, col2 = st.columns(2)
 
     with col1:
@@ -189,13 +189,53 @@ def analytics():
         st.warning("No data for selected filters")
         return
 
-    # Overall status distribution
-    st.subheader("Overall Status Distribution")
+    # ---------------- STATUS DISTRIBUTION ----------------
+    st.subheader("📌 Overall Status Distribution")
     status_counts = df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0)
     st.bar_chart(status_counts)
 
-    # Student-wise attendance %
-    st.subheader("Student-wise Attendance Percentage")
+    # ---------------- SESSION COMPARISON ----------------
+    st.subheader("🕘 Session-wise Attendance Comparison")
+    session_status = (
+        df[df["status"] == "P"]
+        .groupby("session")
+        .size()
+        .reindex(SESSIONS, fill_value=0)
+    )
+    st.bar_chart(session_status)
+
+    # ---------------- DAILY TREND ----------------
+    st.subheader("📅 Daily Attendance Trend (Present)")
+    daily_trend = (
+        df[df["status"] == "P"]
+        .groupby(df["date"].dt.date)
+        .size()
+    )
+    st.line_chart(daily_trend)
+
+    # ---------------- TOP ABSENTEES ----------------
+    st.subheader("🚨 Top Absentees")
+    absentees = (
+        df[df["status"] == "A"]
+        .groupby("student_id")
+        .size()
+        .sort_values(ascending=False)
+        .head(10)
+    )
+
+    if not absentees.empty:
+        students = load_students(active_only=False).set_index("student_id")
+        abs_df = pd.DataFrame({
+            "Name": students["name"],
+            "Absent Count": absentees
+        }).dropna()
+
+        st.dataframe(abs_df)
+    else:
+        st.info("No absentees found")
+
+    # ---------------- STUDENT ATTENDANCE % ----------------
+    st.subheader("🎯 Student-wise Attendance Percentage")
 
     total = df.groupby("student_id").size()
     present = df[df["status"] == "P"].groupby("student_id").size()
