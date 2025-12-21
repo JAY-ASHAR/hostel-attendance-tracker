@@ -107,7 +107,7 @@ def set_lock(day, session, locked=True):
 
     ws.append_row([day, session, locked])
 
-# ---------------- ATTENDANCE (STUDENT-WISE) ----------------
+# ---------------- ATTENDANCE ----------------
 def take_attendance():
     user = st.session_state.user
     st.header("📝 Take Attendance")
@@ -129,42 +129,86 @@ def take_attendance():
         return
 
     st.markdown("### Mark attendance (one student at a time)")
-
     attendance = {}
 
-    # -------- STUDENT WISE ROWS --------
     for _, r in students.iterrows():
         sid = r["student_id"]
-        name = r["name"]
-
         attendance[sid] = st.radio(
-            f"{name}",
+            r["name"],
             STATUS_OPTIONS,
             horizontal=True,
             key=f"{day}_{session}_{sid}",
         )
 
-    # -------- BUILD DATA --------
     data = [
         [day, session, sid, students.loc[students["student_id"] == sid, "name"].values[0], status]
         for sid, status in attendance.items()
     ]
 
-    df = pd.DataFrame(
-        data, columns=["date", "session", "student_id", "name", "status"]
-    )
+    df = pd.DataFrame(data, columns=["date","session","student_id","name","status"])
 
-    # -------- LIVE TOTALS --------
     st.subheader("📊 Live Totals")
     st.write(df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0))
 
-    # -------- SUBMIT --------
     if st.button(f"Submit & Lock {session} Attendance"):
         get_sheet("Attendance").append_rows(data)
         set_lock(day, session, True)
         st.cache_data.clear()
         st.success("✅ Attendance saved & locked")
         st.rerun()
+
+# ---------------- ANALYTICS (NEW) ----------------
+def analytics():
+    admin_only()
+    st.header("📊 Attendance Analytics")
+
+    df = load_attendance()
+    if df.empty:
+        st.info("No attendance data available")
+        return
+
+    # Filters
+    col1, col2 = st.columns(2)
+
+    with col1:
+        selected_date = st.date_input("Filter by Date", value=None)
+
+    with col2:
+        session_filter = st.selectbox(
+            "Filter by Session",
+            ["All", "Morning", "Night"]
+        )
+
+    if selected_date:
+        df = df[df["date"].dt.date == selected_date]
+
+    if session_filter != "All":
+        df = df[df["session"] == session_filter]
+
+    if df.empty:
+        st.warning("No data for selected filters")
+        return
+
+    # Overall status distribution
+    st.subheader("Overall Status Distribution")
+    status_counts = df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0)
+    st.bar_chart(status_counts)
+
+    # Student-wise attendance %
+    st.subheader("Student-wise Attendance Percentage")
+
+    total = df.groupby("student_id").size()
+    present = df[df["status"] == "P"].groupby("student_id").size()
+    percentage = ((present / total) * 100).fillna(0).round(2)
+
+    students = load_students(active_only=False).set_index("student_id")
+    report = pd.DataFrame({
+        "Name": students["name"],
+        "Attendance %": percentage,
+        "Total Entries": total
+    }).fillna(0)
+
+    st.dataframe(report.sort_values("Attendance %", ascending=False))
 
 # ---------------- MANAGE STUDENTS ----------------
 def manage_students():
@@ -278,12 +322,14 @@ def main():
 
     menu = ["Take Attendance"]
     if st.session_state.user["role"] == "admin":
-        menu += ["Manage Students", "Student Profiles", "Generate Report"]
+        menu += ["Analytics", "Manage Students", "Student Profiles", "Generate Report"]
 
     choice = st.sidebar.radio("Go to", menu)
 
     if choice == "Take Attendance":
         take_attendance()
+    elif choice == "Analytics":
+        analytics()
     elif choice == "Manage Students":
         manage_students()
     elif choice == "Student Profiles":
