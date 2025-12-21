@@ -171,16 +171,19 @@ def analytics():
     col1, col2 = st.columns(2)
 
     with col1:
-        selected_date = st.date_input("Filter by Date", value=None)
+        month_filter = st.selectbox(
+            "📆 Select Month",
+            ["All"] + sorted(df["date"].dt.to_period("M").astype(str).unique())
+        )
 
     with col2:
         session_filter = st.selectbox(
-            "Filter by Session",
+            "Session",
             ["All", "Morning", "Night"]
         )
 
-    if selected_date:
-        df = df[df["date"].dt.date == selected_date]
+    if month_filter != "All":
+        df = df[df["date"].dt.to_period("M").astype(str) == month_filter]
 
     if session_filter != "All":
         df = df[df["session"] == session_filter]
@@ -194,61 +197,49 @@ def analytics():
     status_counts = df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0)
     st.bar_chart(status_counts)
 
-    # ---------------- SESSION COMPARISON ----------------
-    st.subheader("🕘 Session-wise Attendance Comparison")
-    session_status = (
+    # ---------------- MONTHLY ANALYTICS ----------------
+    st.subheader("📆 Monthly Attendance Summary (Present Count)")
+    monthly_present = (
         df[df["status"] == "P"]
-        .groupby("session")
+        .groupby(df["date"].dt.to_period("M"))
         .size()
-        .reindex(SESSIONS, fill_value=0)
+        .astype(int)
     )
-    st.bar_chart(session_status)
+    st.bar_chart(monthly_present)
 
-    # ---------------- DAILY TREND ----------------
-    st.subheader("📅 Daily Attendance Trend (Present)")
-    daily_trend = (
-        df[df["status"] == "P"]
-        .groupby(df["date"].dt.date)
-        .size()
-    )
-    st.line_chart(daily_trend)
-
-    # ---------------- TOP ABSENTEES ----------------
-    st.subheader("🚨 Top Absentees")
-    absentees = (
-        df[df["status"] == "A"]
-        .groupby("student_id")
-        .size()
-        .sort_values(ascending=False)
-        .head(10)
-    )
-
-    if not absentees.empty:
-        students = load_students(active_only=False).set_index("student_id")
-        abs_df = pd.DataFrame({
-            "Name": students["name"],
-            "Absent Count": absentees
-        }).dropna()
-
-        st.dataframe(abs_df)
-    else:
-        st.info("No absentees found")
-
-    # ---------------- STUDENT ATTENDANCE % ----------------
-    st.subheader("🎯 Student-wise Attendance Percentage")
-
+    # ---------------- ATTENDANCE PERCENTAGE ----------------
     total = df.groupby("student_id").size()
     present = df[df["status"] == "P"].groupby("student_id").size()
     percentage = ((present / total) * 100).fillna(0).round(2)
 
     students = load_students(active_only=False).set_index("student_id")
+
     report = pd.DataFrame({
         "Name": students["name"],
         "Attendance %": percentage,
-        "Total Entries": total
+        "Total Records": total
     }).fillna(0)
 
-    st.dataframe(report.sort_values("Attendance %", ascending=False))
+    # ---------------- 🚦 RED FLAG STUDENTS ----------------
+    st.subheader("🚦 Red Flag Students (Below 75%)")
+    red_flags = report[report["Attendance %"] < 75]
+
+    if red_flags.empty:
+        st.success("✅ No red-flag students")
+    else:
+        st.dataframe(
+            red_flags.sort_values("Attendance %"),
+            use_container_width=True
+        )
+
+    # ---------------- 🏆 BEST ATTENDANCE ----------------
+    st.subheader("🏆 Best Attendance Leaderboard")
+    leaderboard = report.sort_values("Attendance %", ascending=False).head(10)
+
+    st.dataframe(
+        leaderboard,
+        use_container_width=True
+    )
 
 # ---------------- MANAGE STUDENTS ----------------
 def manage_students():
