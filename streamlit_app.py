@@ -1,6 +1,6 @@
 # =========================================================
 # Hostel Attendance Tracker (Google Sheets Only)
-# Single-file, Clean & Stable (FINAL – STUDENT WISE UI)
+# Single-file, Clean & Stable (FINAL – STUDENT WISE UI + MOBILE FRIENDLY)
 # =========================================================
 
 import streamlit as st
@@ -9,6 +9,50 @@ from datetime import date
 from io import BytesIO
 import gspread
 from google.oauth2.service_account import Credentials
+
+# ---------------- MOBILE FRIENDLY CSS ----------------
+st.markdown(
+    """
+    <style>
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 5rem;
+    }
+
+    div[role="radiogroup"] {
+        flex-wrap: wrap !important;
+    }
+
+    label {
+        font-size: 16px !important;
+        font-weight: 500;
+    }
+
+    button {
+        min-height: 44px;
+        font-size: 16px;
+    }
+
+    @media (max-width: 768px) {
+        section[data-testid="stSidebar"] {
+            width: 100% !important;
+        }
+    }
+
+    .sticky-submit {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: white;
+        padding: 12px;
+        border-top: 1px solid #ddd;
+        z-index: 999;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ---------------- CONFIG ----------------
 APP_TITLE = "🏠 Hostel Attendance Tracker"
@@ -84,10 +128,6 @@ def load_attendance():
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     return df
 
-def get_next_student_id():
-    df = load_students(active_only=False)
-    return int(df["student_id"].max()) + 1 if not df.empty else 1
-
 @st.cache_data(ttl=30)
 def is_locked(day, session):
     rows = get_sheet("Locks").get_all_records()
@@ -99,12 +139,10 @@ def is_locked(day, session):
 def set_lock(day, session, locked=True):
     ws = get_sheet("Locks")
     rows = ws.get_all_records()
-
     for idx, r in enumerate(rows, start=2):
         if str(r["date"]) == day and r["session"] == session:
             ws.update(f"C{idx}", locked)
             return
-
     ws.append_row([day, session, locked])
 
 # ---------------- ATTENDANCE ----------------
@@ -113,11 +151,7 @@ def take_attendance():
     st.header("📝 Take Attendance")
 
     day = st.date_input("Date", date.today()).strftime("%Y-%m-%d")
-    session = (
-        user.get("session")
-        if user["role"] == "operator"
-        else st.selectbox("Session", SESSIONS)
-    )
+    session = user.get("session") if user["role"] == "operator" else st.selectbox("Session", SESSIONS)
 
     if is_locked(day, session) and user["role"] != "admin":
         st.warning("🔒 Session locked")
@@ -128,7 +162,6 @@ def take_attendance():
         st.warning("No active students")
         return
 
-    st.markdown("### Mark attendance (one student at a time)")
     attendance = {}
 
     for _, r in students.iterrows():
@@ -150,14 +183,16 @@ def take_attendance():
     st.subheader("📊 Live Totals")
     st.write(df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0))
 
+    st.markdown('<div class="sticky-submit">', unsafe_allow_html=True)
     if st.button(f"Submit & Lock {session} Attendance"):
         get_sheet("Attendance").append_rows(data)
         set_lock(day, session, True)
         st.cache_data.clear()
         st.success("✅ Attendance saved & locked")
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# ---------------- ANALYTICS (NEW) ----------------
+# ---------------- ANALYTICS ----------------
 def analytics():
     admin_only()
     st.header("📊 Attendance Analytics")
@@ -167,178 +202,33 @@ def analytics():
         st.info("No attendance data available")
         return
 
-    # ---------------- FILTERS ----------------
-    col1, col2 = st.columns(2)
-
-    with col1:
-        month_filter = st.selectbox(
-            "📆 Select Month",
-            ["All"] + sorted(df["date"].dt.to_period("M").astype(str).unique())
-        )
-
-    with col2:
-        session_filter = st.selectbox(
-            "Session",
-            ["All", "Morning", "Night"]
-        )
+    month_filter = st.selectbox(
+        "📆 Select Month",
+        ["All"] + sorted(df["date"].dt.to_period("M").astype(str).unique())
+    )
 
     if month_filter != "All":
         df = df[df["date"].dt.to_period("M").astype(str) == month_filter]
 
-    if session_filter != "All":
-        df = df[df["session"] == session_filter]
+    st.subheader("Overall Status Distribution")
+    st.bar_chart(df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0))
 
-    if df.empty:
-        st.warning("No data for selected filters")
-        return
-
-    # ---------------- STATUS DISTRIBUTION ----------------
-    st.subheader("📌 Overall Status Distribution")
-    status_counts = df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0)
-    st.bar_chart(status_counts)
-
-    # ---------------- MONTHLY ANALYTICS ----------------
-    st.subheader("📆 Monthly Attendance Summary (Present Count)")
-    monthly_present = (
-        df[df["status"] == "P"]
-        .groupby(df["date"].dt.to_period("M"))
-        .size()
-        .astype(int)
-    )
-    st.bar_chart(monthly_present)
-
-    # ---------------- ATTENDANCE PERCENTAGE ----------------
     total = df.groupby("student_id").size()
     present = df[df["status"] == "P"].groupby("student_id").size()
     percentage = ((present / total) * 100).fillna(0).round(2)
 
     students = load_students(active_only=False).set_index("student_id")
-
     report = pd.DataFrame({
         "Name": students["name"],
         "Attendance %": percentage,
         "Total Records": total
     }).fillna(0)
 
-    # ---------------- 🚦 RED FLAG STUDENTS ----------------
-    st.subheader("🚦 Red Flag Students (Below 75%)")
-    red_flags = report[report["Attendance %"] < 75]
+    st.subheader("🚦 Red Flag Students (<75%)")
+    st.dataframe(report[report["Attendance %"] < 75])
 
-    if red_flags.empty:
-        st.success("✅ No red-flag students")
-    else:
-        st.dataframe(
-            red_flags.sort_values("Attendance %"),
-            use_container_width=True
-        )
-
-    # ---------------- 🏆 BEST ATTENDANCE ----------------
     st.subheader("🏆 Best Attendance Leaderboard")
-    leaderboard = report.sort_values("Attendance %", ascending=False).head(10)
-
-    st.dataframe(
-        leaderboard,
-        use_container_width=True
-    )
-
-# ---------------- MANAGE STUDENTS ----------------
-def manage_students():
-    admin_only()
-    st.header("👥 Manage Students")
-
-    ws = get_sheet("Students")
-    df = load_students(active_only=False)
-
-    if df.empty:
-        df = pd.DataFrame(columns=["student_id", "name", "active", "inactive_reason"])
-
-    search = st.text_input("🔍 Search student").strip().lower()
-    if search:
-        df = df[df["name"].str.lower().str.contains(search)]
-
-    with st.form("add_student"):
-        name = st.text_input("Student Name")
-        if st.form_submit_button("Add Student"):
-            if not name.strip():
-                st.error("Name required")
-            elif name.lower() in df["name"].str.lower().tolist():
-                st.error("Duplicate name not allowed")
-            else:
-                ws.append_row([get_next_student_id(), name.strip(), True, ""])
-                st.success("Student added")
-                st.rerun()
-
-    edited = st.data_editor(
-        df,
-        column_config={
-            "student_id": st.column_config.NumberColumn(disabled=True),
-            "active": st.column_config.CheckboxColumn(),
-        },
-        num_rows="dynamic",
-    )
-
-    if st.button("Save Changes"):
-        if edited["name"].str.lower().duplicated().any():
-            st.error("Duplicate names found")
-            return
-        ws.clear()
-        ws.update([edited.columns.tolist()] + edited.values.tolist())
-        st.success("Changes saved")
-        st.rerun()
-
-# ---------------- STUDENT PROFILE ----------------
-def student_profiles():
-    admin_only()
-    st.header("📊 Student Profile")
-
-    students = load_students(active_only=False)
-    if students.empty:
-        st.info("No students")
-        return
-
-    sid = st.selectbox(
-        "Select Student",
-        students["student_id"],
-        format_func=lambda x: students.loc[
-            students["student_id"] == x, "name"
-        ].values[0],
-    )
-
-    df = load_attendance()
-    sdf = df[df["student_id"] == sid]
-
-    if sdf.empty:
-        st.info("No attendance records")
-        return
-
-    st.dataframe(sdf[["date", "session", "status"]])
-    st.subheader("Summary")
-    st.write(sdf["status"].value_counts())
-
-# ---------------- REPORTS ----------------
-def generate_reports():
-    admin_only()
-    st.header("📈 Reports")
-
-    df = load_attendance()
-    if df.empty:
-        st.info("No data")
-        return
-
-    day = st.date_input("Date").strftime("%Y-%m-%d")
-    session = st.selectbox("Session", ["Morning", "Night", "Combined"])
-
-    if session != "Combined":
-        df = df[(df["date"].astype(str) == day) & (df["session"] == session)]
-    else:
-        df = df[df["date"].astype(str) == day]
-
-    out = BytesIO()
-    with pd.ExcelWriter(out, engine="xlsxwriter") as w:
-        df.to_excel(w, index=False)
-        df["status"].value_counts().to_excel(w, sheet_name="Summary")
-
-    st.download_button("Download Excel", out.getvalue(), "attendance.xlsx")
+    st.dataframe(report.sort_values("Attendance %", ascending=False).head(10))
 
 # ---------------- MAIN ----------------
 def main():
@@ -353,7 +243,7 @@ def main():
 
     menu = ["Take Attendance"]
     if st.session_state.user["role"] == "admin":
-        menu += ["Analytics", "Manage Students", "Student Profiles", "Generate Report"]
+        menu += ["Analytics"]
 
     choice = st.sidebar.radio("Go to", menu)
 
@@ -361,12 +251,6 @@ def main():
         take_attendance()
     elif choice == "Analytics":
         analytics()
-    elif choice == "Manage Students":
-        manage_students()
-    elif choice == "Student Profiles":
-        student_profiles()
-    elif choice == "Generate Report":
-        generate_reports()
 
 if __name__ == "__main__":
     main()
