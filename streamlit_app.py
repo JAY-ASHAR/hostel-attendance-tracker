@@ -242,6 +242,7 @@ def take_attendance():
     return output
 
 # ---------------- ANALYTICS (NEW) ----------------
+
 def analytics():
     admin_only()
     st.header("📊 Attendance Analytics")
