@@ -469,10 +469,10 @@ def generate_reports():
     day = st.date_input("Date").strftime("%Y-%m-%d")
     session = st.selectbox("Session", ["Morning", "Night", "Combined"])
 
-    if session != "Combined":
+if session != "Combined":
     df = df[(df["date"].astype(str) == day) & (df["session"] == session)]
-    else:
-        df = df[df["date"].astype(str) == day]
+else:
+     df = df[df["date"].astype(str) == day]
 
 # ✅ COLOR-CODED REPORT
     excel_file = generate_color_excel(df)
