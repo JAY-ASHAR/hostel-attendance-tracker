@@ -222,7 +222,7 @@ def take_attendance():
         st.success("✅ Attendance saved, locked & report generated")
 
         st.download_button(
-            "⬇️ Download Color-Coded Daily Report",
+            "⬇️ Download Daily Report",
             excel_file,
             file_name=f"attendance_{day}_{session}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
