@@ -338,13 +338,21 @@ def manage_students():
     ws = get_sheet("Students")
     df = load_students(active_only=False)
 
-    if df.empty:
-        df = pd.DataFrame(columns=["student_id", "name", "active", "inactive_reason"])
+    # Ensure required columns
+    if "deactivated_on" not in df.columns:
+        df["deactivated_on"] = ""
 
+    # 🧹 Toggle to hide inactive students
+    hide_inactive = st.checkbox("🧹 Hide inactive students", value=True)
+    if hide_inactive:
+        df = df[df["active"] == True]
+
+    # 🔍 Search
     search = st.text_input("🔍 Search student").strip().lower()
     if search:
         df = df[df["name"].str.lower().str.contains(search)]
 
+    # ➕ Add Student
     with st.form("add_student"):
         name = st.text_input("Student Name")
         if st.form_submit_button("Add Student"):
@@ -353,28 +361,67 @@ def manage_students():
             elif name.lower() in df["name"].str.lower().tolist():
                 st.error("Duplicate name not allowed")
             else:
-                ws.append_row([get_next_student_id(), name.strip(), True, ""])
+                ws.append_row([
+                    get_next_student_id(),
+                    name.strip(),
+                    True,
+                    ""
+                ])
                 st.success("Student added")
                 st.rerun()
 
+    # 🧾 Editable table
     edited = st.data_editor(
-        df,
+        df[["student_id", "name", "active", "deactivated_on"]],
         column_config={
-            "student_id": st.column_config.NumberColumn(disabled=True),
-            "active": st.column_config.CheckboxColumn(),
+            "student_id": st.column_config.NumberColumn("ID", disabled=True),
+            "name": st.column_config.TextColumn("Student Name"),
+            "active": st.column_config.CheckboxColumn(
+                "Active",
+                help="Uncheck to deactivate student"
+            ),
+            "deactivated_on": st.column_config.TextColumn(
+                "Deactivated On",
+                disabled=True
+            ),
         },
+        use_container_width=True,
         num_rows="dynamic",
     )
 
+    # 🔒 Confirmation before deactivation
+    deactivated_now = (
+        (df["active"] == True) &
+        (edited["active"] == False)
+    )
+
+    if deactivated_now.any():
+        st.warning("⚠️ You are deactivating one or more students")
+        confirm = st.checkbox("🔒 I confirm deactivation")
+        if not confirm:
+            st.stop()
+
+        edited.loc[deactivated_now, "deactivated_on"] = date.today().strftime("%Y-%m-%d")
+
+    # 🔄 Restore students (clear date)
+    restored_now = (
+        (df["active"] == False) &
+        (edited["active"] == True)
+    )
+
+    if restored_now.any():
+        edited.loc[restored_now, "deactivated_on"] = ""
+
+    # 💾 Save Changes
     if st.button("Save Changes"):
         if edited["name"].str.lower().duplicated().any():
             st.error("Duplicate names found")
             return
+
         ws.clear()
         ws.update([edited.columns.tolist()] + edited.values.tolist())
-        st.success("Changes saved")
+        st.success("✅ Changes saved successfully")
         st.rerun()
-
 # ---------------- STUDENT PROFILE ----------------
 def student_profiles():
     admin_only()
