@@ -456,6 +456,7 @@ def student_profiles():
     st.subheader("Summary")
     st.write(sdf["status"].value_counts())
 
+
 # ---------------- REPORTS ----------------
 def generate_reports():
     admin_only()
@@ -469,22 +470,28 @@ def generate_reports():
     day = st.date_input("Date").strftime("%Y-%m-%d")
     session = st.selectbox("Session", ["Morning", "Night", "Combined"])
 
-if session != "Combined":
-    df = df[(df["date"].astype(str) == day) & (df["session"] == session)]
-else:
-     df = df[df["date"].astype(str) == day]
+    # 🔍 Filter data correctly
+    if session != "Combined":
+        df = df[
+            (df["date"].astype(str) == day) &
+            (df["session"] == session)
+        ]
+    else:
+        df = df[df["date"].astype(str) == day]
 
-# ✅ COLOR-CODED REPORT
+    if df.empty:
+        st.warning("No records found for selected date/session")
+        return
+
+    # ✅ COLOR-CODED REPORT
     excel_file = generate_color_excel(df)
 
     st.download_button(
-    "Download Excel",
-    excel_file,
-    file_name=f"attendance_{day}_{session}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "⬇️ Download Excel",
+        excel_file,
+        file_name=f"attendance_{day}_{session}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-
-    st.download_button("Download Excel", out.getvalue(), "attendance.xlsx")
 
 # ---------------- MAIN ----------------
 def main():
