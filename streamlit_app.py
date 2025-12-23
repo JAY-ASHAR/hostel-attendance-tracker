@@ -21,43 +21,7 @@ st.markdown(
         padding-right: 1rem;
         max-width: 100%;
     }
-
-    /* Make radio buttons touch-friendly */
-    div[role="radiogroup"] > label {
-        margin-right: 12px;
-        font-size: 16px;
-    }
-
-    /* Student name spacing */
-    label {
-        font-size: 16px !important;
-        font-weight: 500;
-    }
-
-    /* Bigger buttons for mobile */
-    button[kind="primary"] {
-        width: 100%;
-        font-size: 18px;
-        padding: 0.6rem;
-    }
-
-    /* Sidebar scroll on mobile */
-    section[data-testid="stSidebar"] {
-        overflow-y: auto;
-    }
-
-    /* Reduce horizontal overflow */
-    .stHorizontalBlock {
-        overflow-x: auto;
-    }
-
-    /* Hide Streamlit footer */
-    footer {visibility: hidden;}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-/* Main app title */
+    /* Main app title */
 h1 {
     font-size: 28px !important;
     font-weight: 700 !important;
@@ -96,6 +60,41 @@ section[data-testid="stSidebar"] h2 {
     font-weight: 600 !important;
 }
 
+    /* Make radio buttons touch-friendly */
+    div[role="radiogroup"] > label {
+        margin-right: 12px;
+        font-size: 16px;
+    }
+
+    /* Student name spacing */
+    label {
+        font-size: 16px !important;
+        font-weight: 500;
+    }
+
+    /* Bigger buttons for mobile */
+    button[kind="primary"] {
+        width: 100%;
+        font-size: 18px;
+        padding: 0.6rem;
+    }
+
+    /* Sidebar scroll on mobile */
+    section[data-testid="stSidebar"] {
+        overflow-y: auto;
+    }
+
+    /* Reduce horizontal overflow */
+    .stHorizontalBlock {
+        overflow-x: auto;
+    }
+
+    /* Hide Streamlit footer */
+    footer {visibility: hidden;}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # ---------------- CONFIG ----------------
 APP_TITLE = "🏠 Hostel Attendance Tracker"
