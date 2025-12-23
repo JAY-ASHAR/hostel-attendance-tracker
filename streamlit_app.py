@@ -157,10 +157,15 @@ def get_next_student_id():
 
 @st.cache_data(ttl=30)
 def is_locked(day, session):
-    rows = get_sheet("Locks").get_all_records()
+    try:
+        rows = get_sheet("Locks").get_all_records()
+    except Exception:
+        # If Locks sheet is missing or permission error, do NOT block attendance
+        return False
+
     for r in rows:
-        if str(r["date"]) == day and r["session"] == session:
-            return bool(r["locked"])
+        if str(r.get("date")) == day and r.get("session") == session:
+            return bool(r.get("locked"))
     return False
 
 def set_lock(day, session, locked=True):
