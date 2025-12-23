@@ -474,10 +474,15 @@ def generate_reports():
     else:
         df = df[df["date"].astype(str) == day]
 
-    out = BytesIO()
-    with pd.ExcelWriter(out, engine="xlsxwriter") as w:
-        df.to_excel(w, index=False)
-        df["status"].value_counts().to_excel(w, sheet_name="Summary")
+  # Generate color-coded Excel for reports
+excel_file = generate_color_excel(df)
+
+st.download_button(
+    "Download Excel",
+    excel_file,
+    file_name=f"attendance_{day}_{session}.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+)
 
     st.download_button("Download Excel", out.getvalue(), "attendance.xlsx")
 
