@@ -217,7 +217,6 @@ def take_attendance():
         file_name=f"attendance_{day}_{session}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-
     def generate_color_excel(df):
     output = BytesIO()
 
