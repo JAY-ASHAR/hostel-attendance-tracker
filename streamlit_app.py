@@ -156,68 +156,8 @@ def set_lock(day, session, locked=True):
 
     ws.append_row([day, session, locked])
 
-
-# ---------------- ATTENDANCE ----------------
-def take_attendance():
-    user = st.session_state.user
-    st.header("📝 Take Attendance")
-
-    day = st.date_input("Date", date.today()).strftime("%Y-%m-%d")
-    session = (
-        user.get("session")
-        if user["role"] == "operator"
-        else st.selectbox("Session", SESSIONS)
-    )
-
-    if is_locked(day, session) and user["role"] != "admin":
-        st.warning("🔒 Session locked")
-        return
-
-    students = load_students(active_only=True)
-    if students.empty:
-        st.warning("No active students")
-        return
-
-    st.markdown("### Mark attendance (one student at a time)")
-    attendance = {}
-
-    for _, r in students.iterrows():
-        sid = r["student_id"]
-        attendance[sid] = st.radio(
-            r["name"],
-            STATUS_OPTIONS,
-            horizontal=True,
-            key=f"{day}_{session}_{sid}",
-        )
-
-    data = [
-        [day, session, sid, students.loc[students["student_id"] == sid, "name"].values[0], status]
-        for sid, status in attendance.items()
-    ]
-
-    df = pd.DataFrame(data, columns=["date","session","student_id","name","status"])
-
-    st.subheader("📊 Live Totals")
-    st.write(df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0))
-
-    if st.button(f"Submit & Lock {session} Attendance"):
-    get_sheet("Attendance").append_rows(data)
-    set_lock(day, session, True)
-    st.cache_data.clear()
-
-    # Auto-generate color-coded report
-    report_df = df.copy()
-    excel_file = generate_color_excel(report_df)
-
-    st.success("✅ Attendance saved, locked & report generated")
-
-    st.download_button(
-        "⬇️ Download Color-Coded Daily Report",
-        excel_file,
-        file_name=f"attendance_{day}_{session}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-    def generate_color_excel(df):
+# ---------------- COLOR EXCEL GENERATOR ----------------
+def generate_color_excel(df):
     output = BytesIO()
 
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
@@ -241,6 +181,52 @@ def take_attendance():
     output.seek(0)
     return output
 
+# ---------------- ATTENDANCE ----------------
+def take_attendance():
+    user = st.session_state.user
+    st.header("📝 Take Attendance")
+
+    day = st.date_input("Date", date.today()).strftime("%Y-%m-%d")
+    session = user.get("session") if user["role"] == "operator" else st.selectbox("Session", SESSIONS)
+
+    if is_locked(day, session) and user["role"] != "admin":
+        st.warning("🔒 Session locked")
+        return
+
+    students = load_students(True)
+    if students.empty:
+        st.warning("No active students")
+        return
+
+    attendance = {}
+    for _, r in students.iterrows():
+        attendance[r["student_id"]] = st.radio(
+            r["name"], STATUS_OPTIONS, horizontal=True, key=f"{day}_{session}_{r['student_id']}"
+        )
+
+    data = [[day, session, sid, students.loc[students["student_id"] == sid, "name"].values[0], status]
+            for sid, status in attendance.items()]
+
+    df = pd.DataFrame(data, columns=["date","session","student_id","name","status"])
+
+    st.subheader("📊 Live Totals")
+    st.write(df["status"].value_counts().reindex(STATUS_OPTIONS, fill_value=0))
+
+    if st.button(f"Submit & Lock {session} Attendance"):
+        get_sheet("Attendance").append_rows(data)
+        set_lock(day, session, True)
+        st.cache_data.clear()
+
+        excel_file = generate_color_excel(df)
+
+        st.success("✅ Attendance saved, locked & report generated")
+
+        st.download_button(
+            "⬇️ Download Color-Coded Daily Report",
+            excel_file,
+            file_name=f"attendance_{day}_{session}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 # ---------------- ANALYTICS (NEW) ----------------
 
 def analytics():
