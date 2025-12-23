@@ -57,6 +57,44 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+/* Main app title */
+h1 {
+    font-size: 28px !important;
+    font-weight: 700 !important;
+    color: #1f2937;
+    margin-bottom: 0.5rem;
+}
+
+/* Section headers */
+h2 {
+    font-size: 22px !important;
+    font-weight: 600 !important;
+    color: #111827;
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Sub-section headers */
+h3 {
+    font-size: 18px !important;
+    font-weight: 600 !important;
+    color: #374151;
+    margin-top: 1rem;
+}
+
+/* Improve normal text readability */
+p, li, label {
+    font-size: 16px !important;
+    line-height: 1.6;
+    color: #1f2937;
+}
+
+/* Sidebar headings */
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2 {
+    font-size: 18px !important;
+    font-weight: 600 !important;
+}
 
 
 # ---------------- CONFIG ----------------
