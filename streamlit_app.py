@@ -470,19 +470,19 @@ def generate_reports():
     session = st.selectbox("Session", ["Morning", "Night", "Combined"])
 
     if session != "Combined":
-        df = df[(df["date"].astype(str) == day) & (df["session"] == session)]
+    df = df[(df["date"].astype(str) == day) & (df["session"] == session)]
     else:
         df = df[df["date"].astype(str) == day]
 
-  # Generate color-coded Excel for reports
-excel_file = generate_color_excel(df)
+# ✅ COLOR-CODED REPORT
+    excel_file = generate_color_excel(df)
 
-st.download_button(
+    st.download_button(
     "Download Excel",
     excel_file,
     file_name=f"attendance_{day}_{session}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-)
+    )
 
     st.download_button("Download Excel", out.getvalue(), "attendance.xlsx")
 
