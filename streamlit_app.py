@@ -21,43 +21,33 @@ st.markdown(
         padding-right: 1rem;
         max-width: 100%;
     }
-    /* Main app title */
-h1 {
-    font-size: 28px !important;
+    /* App title (st.title) */
+div[data-testid="stTitle"] h1 {
+    font-size: 30px !important;
     font-weight: 700 !important;
-    color: #1f2937;
-    margin-bottom: 0.5rem;
+    color: #111827 !important;
 }
 
-/* Section headers */
-h2 {
+/* Main section headers (st.header) */
+div[data-testid="stHeader"] {
     font-size: 22px !important;
     font-weight: 600 !important;
-    color: #111827;
-    margin-top: 1.5rem;
-    margin-bottom: 0.5rem;
+    color: #1f2937 !important;
+    margin-top: 1.5rem !important;
 }
 
-/* Sub-section headers */
-h3 {
+/* Sub headers (st.subheader) */
+div[data-testid="stSubheader"] {
     font-size: 18px !important;
     font-weight: 600 !important;
-    color: #374151;
-    margin-top: 1rem;
+    color: #374151 !important;
 }
 
 /* Improve normal text readability */
 p, li, label {
     font-size: 16px !important;
-    line-height: 1.6;
-    color: #1f2937;
-}
-
-/* Sidebar headings */
-section[data-testid="stSidebar"] h1,
-section[data-testid="stSidebar"] h2 {
-    font-size: 18px !important;
-    font-weight: 600 !important;
+    line-height: 1.6 !important;
+    color: #1f2937 !important;
 }
 
     /* Make radio buttons touch-friendly */
