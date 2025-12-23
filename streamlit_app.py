@@ -13,74 +13,65 @@ from google.oauth2.service_account import Credentials
 st.markdown(
     """
     <style>
-    /* Overall app width for mobile */
+    /* App container */
     .block-container {
-        padding-top: 1rem;
-        padding-bottom: 2rem;
-        padding-left: 1rem;
-        padding-right: 1rem;
+        padding: 1rem;
         max-width: 100%;
     }
-    /* App title (st.title) */
-div[data-testid="stTitle"] h1 {
-    font-size: 30px !important;
-    font-weight: 700 !important;
-    color: #111827 !important;
-}
 
-/* Main section headers (st.header) */
-div[data-testid="stHeader"] {
-    font-size: 22px !important;
-    font-weight: 600 !important;
-    color: #1f2937 !important;
-    margin-top: 1.5rem !important;
-}
+    /* MAIN APP TITLE (st.title) */
+    h1 {
+        font-size: 32px !important;
+        font-weight: 700 !important;
+        color: #111827 !important;
+        margin-bottom: 1rem !important;
+    }
 
-/* Sub headers (st.subheader) */
-div[data-testid="stSubheader"] {
-    font-size: 18px !important;
-    font-weight: 600 !important;
-    color: #374151 !important;
-}
+    /* SECTION HEADERS (st.header) */
+    h2 {
+        font-size: 22px !important;
+        font-weight: 600 !important;
+        color: #1f2937 !important;
+        margin-top: 2rem !important;
+        margin-bottom: 0.5rem !important;
+    }
 
-/* Improve normal text readability */
-p, li, label {
-    font-size: 16px !important;
-    line-height: 1.6 !important;
-    color: #1f2937 !important;
-}
+    /* SUB HEADERS (st.subheader) */
+    h3 {
+        font-size: 18px !important;
+        font-weight: 600 !important;
+        color: #374151 !important;
+        margin-top: 1.5rem !important;
+    }
 
-    /* Make radio buttons touch-friendly */
+    /* NORMAL TEXT */
+    p, label, span {
+        font-size: 16px !important;
+        line-height: 1.6 !important;
+        color: #1f2937 !important;
+    }
+
+    /* Radio buttons spacing */
     div[role="radiogroup"] > label {
         margin-right: 12px;
-        font-size: 16px;
-    }
-
-    /* Student name spacing */
-    label {
         font-size: 16px !important;
-        font-weight: 500;
     }
 
-    /* Bigger buttons for mobile */
-    button[kind="primary"] {
-        width: 100%;
-        font-size: 18px;
-        padding: 0.6rem;
+    /* Buttons */
+    button {
+        font-size: 18px !important;
+        padding: 0.6rem !important;
     }
 
-    /* Sidebar scroll on mobile */
+    /* Sidebar */
     section[data-testid="stSidebar"] {
         overflow-y: auto;
     }
 
-    /* Reduce horizontal overflow */
-    .stHorizontalBlock {
-        overflow-x: auto;
-    }
-
     /* Hide Streamlit footer */
-    footer {visibility: hidden;}
+    footer {
+        visibility: hidden;
+    }
     </style>
     """,
     unsafe_allow_html=True
